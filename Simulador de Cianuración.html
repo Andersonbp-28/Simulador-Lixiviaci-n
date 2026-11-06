@@ -1,0 +1,957 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Simulador de Cianuración</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: consola de proceso — panel de parámetros a la izquierda (fijo), resultados a la derecha; en móvil se apilan */
+:root {
+  --bg: #f3f5f6;
+  --panel: #ffffff;
+  --sunk: #e8ecee;
+  --ink: #142128;
+  --ink-2: #4a5a62;
+  --ink-3: #74838b;
+  --line: #d3dade;
+  --accent: #0f6d78;        /* solución cianurada / acero de proceso */
+  --accent-ink: #ffffff;
+  --gold: #b07800;          /* oro (serie 1) */
+  --s2: #2a78d6;            /* plata / serie 2 */
+  --s3: #1baf7a;            /* serie 3 */
+  --good: #1c7c3c; --warn: #a96500; --crit: #b3261e; --info: #2a63a8;
+  --good-bg: #e3f2e7; --warn-bg: #fbf0dc; --crit-bg: #f9e3e1; --info-bg: #e3edf8;
+  --tank: #dfe6e9; --tank-edge: #8a9aa2;
+  --f-display: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1619; --panel: #162024; --sunk: #1c282d; --ink: #e6ecee; --ink-2: #a9b7bd; --ink-3: #7d8d94;
+  --line: #2b3a40; --accent: #3fb3bf; --accent-ink: #062226; --gold: #c98500; --s2: #3987e5; --s3: #199e70;
+  --good: #5cc27e; --warn: #e3a33c; --crit: #f07a70; --info: #7fb0ec;
+  --good-bg: #173322; --warn-bg: #36290f; --crit-bg: #3c1a17; --info-bg: #172a40;
+  --tank: #24333a; --tank-edge: #5f747d; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0f1619; --panel: #162024; --sunk: #1c282d; --ink: #e6ecee; --ink-2: #a9b7bd; --ink-3: #7d8d94;
+  --line: #2b3a40; --accent: #3fb3bf; --accent-ink: #062226; --gold: #c98500; --s2: #3987e5; --s3: #199e70;
+  --good: #5cc27e; --warn: #e3a33c; --crit: #f07a70; --info: #7fb0ec;
+  --good-bg: #173322; --warn-bg: #36290f; --crit-bg: #3c1a17; --info-bg: #172a40;
+  --tank: #24333a; --tank-edge: #5f747d; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 1440px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px; }
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; padding-bottom: 16px; border-bottom: 2px solid var(--ink); margin-bottom: 18px; }
+.eyebrow { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(28px, 4vw, 40px); line-height: 1.05; margin: 4px 0 0; letter-spacing: -.01em; text-wrap: balance; }
+h1 .rx { font-family: var(--f-mono); font-weight: 400; font-size: .42em; color: var(--ink-2); display: block; margin-top: 6px; letter-spacing: 0; }
+h2 { font-family: var(--f-display); font-weight: 600; font-size: 21px; margin: 0; text-wrap: balance; }
+h3 { font-family: var(--f-display); font-weight: 600; font-size: 16px; margin: 0; letter-spacing: .01em; }
+.scn { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
+.seg button { font: 600 13px var(--f-body); border: 0; background: transparent; color: var(--ink-2); padding: 7px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+select, input[type=number] { font: 14px var(--f-body); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; }
+button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.grid { display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+/* Panel de parámetros */
+aside.params { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); max-height: calc(100vh - 24px); overflow: auto; }
+@media (max-width: 900px) { aside.params { position: static; max-height: none; } }
+.ph { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ph button { font: 600 12.5px var(--f-body); background: transparent; color: var(--accent); border: 1px solid var(--line); border-radius: 5px; padding: 5px 9px; cursor: pointer; }
+details.grp { border-bottom: 1px solid var(--line); }
+details.grp > summary { list-style: none; cursor: pointer; padding: 11px 16px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+details.grp > summary::-webkit-details-marker { display: none; }
+details.grp > summary .tag { font-family: var(--f-mono); font-size: 11px; color: var(--ink-3); }
+details.grp > summary::after { content: "+"; font-family: var(--f-mono); color: var(--ink-3); }
+details.grp[open] > summary::after { content: "−"; }
+.fields { padding: 2px 16px 14px; display: grid; gap: 12px; }
+.f label { display: flex; justify-content: space-between; gap: 8px; font-size: 13.5px; color: var(--ink-2); }
+.f label output, .f label .v { font-family: var(--f-mono); font-size: 13px; color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.f .hint { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+.f select { width: 100%; margin-top: 4px; }
+input[type=range] { width: 100%; accent-color: var(--accent); margin: 6px 0 0; }
+.chk { display: flex; gap: 8px; align-items: center; font-size: 13.5px; color: var(--ink-2); }
+
+/* Resultados */
+main.res { display: grid; gap: 18px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; min-width: 0; }
+.card-h { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 16px; margin-bottom: 12px; }
+.card-h p { margin: 0; color: var(--ink-3); font-size: 13px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.kpi { background: var(--panel); padding: 12px 14px 13px; min-width: 0; }
+.kpi .k { font-size: 12.5px; color: var(--ink-3); }
+.kpi .n { font-family: var(--f-display); font-weight: 600; font-size: 30px; line-height: 1.1; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.kpi .n small { font-family: var(--f-body); font-size: 13px; font-weight: 500; color: var(--ink-2); margin-left: 3px; }
+.kpi .s { font-size: 12px; color: var(--ink-2); margin-top: 2px; font-family: var(--f-mono); }
+.kpi.hero .n { color: var(--gold); }
+
+.flow { overflow-x: auto; }
+.flow svg { display: block; min-width: 640px; width: 100%; height: auto; }
+.flow svg text { font-family: var(--f-mono); }
+
+.alerts { display: grid; gap: 8px; }
+.al { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 9px 12px; border-radius: 6px; font-size: 13.5px; }
+.al b { font-weight: 600; }
+.al .ic { font-family: var(--f-mono); font-size: 11px; font-weight: 500; padding: 2px 6px; border-radius: 4px; border: 1px solid currentColor; white-space: nowrap; margin-top: 1px; }
+.al.crit { background: var(--crit-bg); } .al.crit .ic { color: var(--crit); }
+.al.warn { background: var(--warn-bg); } .al.warn .ic { color: var(--warn); }
+.al.good { background: var(--good-bg); } .al.good .ic { color: var(--good); }
+.al.info { background: var(--info-bg); } .al.info .ic { color: var(--info); }
+.al .src { color: var(--ink-3); font-size: 12px; }
+
+.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+@media (max-width: 1100px) { .two { grid-template-columns: 1fr; } }
+.chart { position: relative; height: 280px; }
+.chart.sm { height: 200px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--ink-2); margin-top: 8px; }
+.legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.legend i.sq { height: 10px; width: 10px; border-radius: 2px; }
+
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+thead th { font-weight: 600; color: var(--ink-2); font-size: 12px; background: var(--sunk); position: sticky; top: 0; }
+td.m, .mono { font-family: var(--f-mono); font-size: 12.5px; }
+
+.stack { display: flex; height: 22px; border-radius: 4px; overflow: hidden; gap: 2px; background: var(--panel); }
+.stack div { min-width: 2px; }
+.specs { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px 18px; margin-top: 12px; }
+.specs div { font-size: 12.5px; color: var(--ink-3); }
+.specs b { display: block; font-family: var(--f-mono); font-weight: 500; font-size: 14px; color: var(--ink); }
+
+.sweep-ctl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--ink-2); }
+.model { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 22px; }
+@media (max-width: 1100px) { .model { grid-template-columns: minmax(0, 1fr); } }
+.model > div { min-width: 0; }
+.model p, .model li { font-size: 14px; color: var(--ink-2); max-width: 68ch; }
+.model ul { padding-left: 18px; margin: 6px 0; display: grid; gap: 4px; }
+.eq { font-family: var(--f-mono); font-size: 13px; background: var(--sunk); border-radius: 6px; padding: 10px 12px; overflow-x: auto; white-space: pre; color: var(--ink); }
+ol.refs { padding-left: 20px; display: grid; gap: 6px; font-size: 13px; color: var(--ink-2); margin: 8px 0 0; }
+ol.refs i { color: var(--ink); }
+.note { font-size: 12.5px; color: var(--ink-3); margin-top: 8px; }
+@media (prefers-reduced-motion: no-preference) { .tankfill { transition: height .35s ease, y .35s ease; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">Hidrometalurgia del oro · lixiviación por agitación</div>
+      <h1>Planta de cianuración <span class="rx">4Au + 8CN⁻ + O₂ + 2H₂O → 4[Au(CN)₂]⁻ + 4OH⁻</span></h1>
+    </div>
+    <div class="scn">
+      <div class="seg" role="group" aria-label="Modo de simulación">
+        <button id="mPlant" type="button" aria-pressed="true">Planta continua</button>
+        <button id="mBatch" type="button" aria-pressed="false">Prueba en botella</button>
+      </div>
+      <select id="preset" aria-label="Escenario de referencia"></select>
+    </div>
+  </header>
+
+  <div class="grid">
+    <aside class="params" aria-label="Parámetros de operación">
+      <div class="ph"><h2>Parámetros</h2><button id="reset" type="button">Restablecer escenario</button></div>
+      <div id="groups"></div>
+    </aside>
+
+    <main class="res">
+      <section class="kpis" id="kpis" aria-label="Indicadores principales"></section>
+
+      <section class="card" id="flowCard">
+        <div class="card-h"><h2 id="flowTitle">Diagrama del circuito</h2><p id="flowSub"></p></div>
+        <div class="flow" id="flow"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><h2>Diagnóstico de operación</h2><p>Reglas tomadas de las fuentes y de la práctica de diseño</p></div>
+        <div class="alerts" id="alerts"></div>
+      </section>
+
+      <div class="two">
+        <section class="card">
+          <div class="card-h"><h2 id="profTitle">Extracción por tanque</h2><p id="profSub"></p></div>
+          <div class="chart"><canvas id="cProf" role="img" aria-label="Extracción acumulada de oro y plata"></canvas></div>
+          <div class="legend" id="lgProf"></div>
+        </section>
+        <section class="card">
+          <div class="card-h"><h2>Química de la pulpa</h2><p id="chemSub">Cianuro libre y oxígeno disuelto</p></div>
+          <div class="chart sm"><canvas id="cCN" role="img" aria-label="Cianuro libre por etapa"></canvas></div>
+          <div class="chart sm" style="margin-top:10px"><canvas id="cDO" role="img" aria-label="Oxígeno disuelto por etapa"></canvas></div>
+        </section>
+      </div>
+
+      <div class="two">
+        <section class="card">
+          <div class="card-h"><h2>Análisis de sensibilidad</h2>
+            <div class="sweep-ctl"><label for="swVar">Variar</label><select id="swVar"></select></div></div>
+          <div class="chart"><canvas id="cSweep" role="img" aria-label="Sensibilidad de la extracción"></canvas></div>
+          <p class="note" id="swNote"></p>
+        </section>
+        <section class="card">
+          <div class="card-h"><h2>Consumo de cianuro</h2><p id="cnTot"></p></div>
+          <div class="stack" id="cnStack" aria-hidden="true"></div>
+          <div class="legend" id="cnLeg"></div>
+          <div id="agBlock">
+            <h3 style="margin-top:18px">Agitación por tanque</h3>
+            <div class="specs" id="agSpecs"></div>
+          </div>
+        </section>
+      </div>
+
+      <section class="card">
+        <div class="card-h"><h2 id="tblTitle">Balance por tanque</h2><p>Valores a la descarga de cada etapa</p></div>
+        <div class="tbl"><table id="tbl"></table></div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><h2>Modelo y fuentes</h2><p>Qué calcula el simulador y con qué datos se ajustó</p></div>
+        <div class="model">
+          <div>
+            <p>Cada tanque se resuelve en estado estacionario. La velocidad de disolución sigue la forma multiplicativa de Bazin et al. [1], con un término químico en serie para cianuro y oxígeno (control por difusión, [2][3]):</p>
+            <div class="eq">k = K₀ · g_d(D80) · g_lamas · g_quím · g_pH · g_T · g_Cu · g_Pb · g_P
+
+g_quím = 1 / (1 + K_CN/[CN⁻] + K_O₂/[O₂])
+[CN⁻] = [NaCN]·1/(1+10^(9.21−pH))      (equilibrio HCN)
+g_Cu  = (CN_total/Cu)⁴/4⁴  si CN_total/Cu &lt; 4   [4]
+H_tanque = p_Q·(1+kτ_b/N)^−N + (1−p_Q)·H_Cholette-Cloutier</div>
+            <ul>
+              <li><b>Oro en tres poblaciones:</b> expuesto (k), no expuesto (0,05·k) según la relación D80/tamaño de grano [1], y refractario (no lixiviable).</li>
+              <li><b>Mezcla no ideal:</b> bypass con N mezcladores y zona muerta con intercambio (modelo de Bazin et al. [1]). Si la agitación no suspende los sólidos (Zwietering), crece la zona muerta.</li>
+              <li><b>Consumo de NaCN:</b> sulfuros → tiocianato, cobre → Cu(CN)₃²⁻ (3,5 mol CN/mol Cu), volatilización de HCN y cianuro residual en el relave [4].</li>
+              <li><b>Oxígeno:</b> saturación según temperatura y altitud; kLa por correlación de Van't Riet con la potencia del impulsor y el aire inyectado.</li>
+            </ul>
+            <p>Calibración: K₀ reproduce el caso nominal de Bazin (95 % Au, 6 × 480 m³). El perfil de 5 CSTR ideales coincide con la tabla 2 de Yahya et al. [5] y el escenario de Lovera et al. [4] da 37–42 % de extracción con cobre soluble. Las 16 pruebas de Ruiz-Córdoba et al. [2] se reproducen con el error que muestra la gráfica.</p>
+            <p class="note">Es un modelo didáctico. Para diseñar una planta real hay que calibrar K₀, K_CN, el tamaño de grano y la fracción refractaria con pruebas metalúrgicas del mineral propio.</p>
+          </div>
+          <div>
+            <h3>Validación con las pruebas en botella de Ruiz-Córdoba et al. [2]</h3>
+            <div class="chart" style="height:260px"><canvas id="cVal" role="img" aria-label="Recuperación medida contra predicha"></canvas></div>
+            <p class="note" id="valNote"></p>
+            <ol class="refs">
+              <li>Bazin, Hodouin, Khalezi, Bellec, Egan, Duchesne. <i>A gold leaching simulator for training to process analysis methods.</i> IFAC (2007).</li>
+              <li>Ruiz-Córdoba, López-Cañas, Carmona-Arango, Bolívar-García. <i>Modelamiento estadístico y optimización del proceso de cianuración de un mineral aurífero.</i> Rev. Fac. Ing. 28(53), 2019.</li>
+              <li>Sánchez Chacón. <i>Modelo de lixiviación en pila de menas de oro por cianuración.</i> Tesis de maestría, UAM-Iztapalapa, 1995.</li>
+              <li>Lovera, Quiñones, Aramburú et al. <i>Procesos de tostación–lixiviación de minerales auríferos con metales cianicidas.</i> Rev. Inst. Investig. FIGMMG (UNMSM).</li>
+              <li>Yahya, Ibrahim, Aziz, Suli. <i>Simulation of leaching process of gold by cyanidation.</i> IOP Conf. Ser.: Mater. Sci. Eng. 736 (2020) 022111.</li>
+              <li>Li, Sun, Kou, Wang, Liu. <i>Development of a gold leaching reagent as an alternative to cyanide.</i> Int. J. Miner. Metall. Mater. 32(4), 2025.</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+// Motor del simulador de cianuración (tanques agitados en serie / botella)
+// Estructura de velocidad multiplicativa según Bazin et al. (2007, IFAC):
+//   k = K · g_d · g_S · g_CN · g_O2 · g_P   (+ g_pH, g_T, g_Cu, g_Pb)
+const SIM = (function () {
+  const MW = { NaCN: 49.01, CN: 26.02, Cu: 63.55, Au: 196.97, O2: 32 };
+  const IMP = {
+    rushton: { name: 'Turbina Rushton (6 palas planas)', Np: 5.0, S0: 6.6 },
+    pbt:     { name: 'Turbina de palas inclinadas 45°', Np: 1.27, S0: 5.6 },
+    hydro:   { name: 'Hidrofoil (tipo A310)', Np: 0.30, S0: 5.0 },
+  };
+  const REACT = { pirita: 1.0, marcasita: 1.8, pirrotita: 4.0, arsenopirita: 1.5 };
+  const C = { K0: 8.08, K_CN: 600, CF: 0.6 }; // K0 h^-1 (calibrada), K_CN mg/L NaCN, CF coef. de lamas
+  const K_O2 = 1.5;       // mg/L
+  const K_SLOW = 0.05;    // fracción de k para oro no expuesto
+  const K_AG = 0.30;      // k_Ag / k_Au
+  const KS = 6.0;         // consumo de NaCN por sulfuros (mg/L·h por %S a cs=1)
+  const KO = 0.55;        // demanda de O2 por sulfuros (mg/L·h por %S a cs=1)
+  const KV = 0.25;        // h^-1 volatilización de HCN
+  const KCU = 0.5;        // h^-1 disolución de Cu soluble
+  const CN_PER_CU = 3.5;  // mol CN/mol Cu (2Cu2+ + 7CN- → 2Cu(CN)3^2- + CNO-)
+
+  function o2sat(T, alt, yO2) { // mg/L
+    const cs = 14.62 - 0.3898 * T + 0.006969 * T * T - 0.00005897 * T * T * T;
+    const P = Math.exp(-alt / 8434);
+    return cs * P * (yO2 / 0.2095) * 0.95; // 0.95: efecto de sales en la pulpa
+  }
+  const alphaCN = pH => 1 / (1 + Math.pow(10, 9.21 - pH)); // fracción CN- (resto HCN)
+  const gpH = pH => 1 / (1 + Math.exp((pH - 11.9) / 0.3));
+  const gT = T => Math.exp(-15000 / 8.314 * (1 / (T + 273.15) - 1 / 298.15));
+  const exposed = (D80, dg) => 1 / (1 + Math.pow(0.25 * D80 / dg, 2));
+  const gd = D80 => Math.pow(75 / D80, 0.35);
+  const gsize = D80 => Math.pow(75 / D80, 0.5);
+
+  // Transferencia de un tanque (Bazin): bypass de N mezcladores + Cholette-Cloutier
+  function tankH(k, tau, m) {
+    const pQ = m.pQ, pV = m.pV;
+    let Hb = 1;
+    if (pQ > 0) {
+      const tb = pV > 0 ? tau * pV / pQ : 0;
+      Hb = Math.pow(1 + k * tb / m.Nb, -m.Nb);
+    }
+    const F = 1 - pQ;
+    const tcc = tau * (1 - pV) / Math.max(F, 1e-6);
+    const ta = tcc * (1 - m.Fb), td = tcc * m.Fb;
+    const q = m.q;
+    const ex = td > 0 ? q * k * td / (q + k * td) : 0;
+    const Hcc = 1 / (1 + ex + k * ta);
+    return pQ * Hb + F * Hcc;
+  }
+
+  function hydraulics(p) {
+    const Qs = p.cap / 24;                     // t/h
+    const Qw = Qs * (1 - p.Cw) / p.Cw;         // m3/h
+    const Vs = Qs / p.rhos;
+    const Qv = Qw + Vs;
+    const rhop = (Qs + Qw) / Qv;               // t/m3
+    const tau = p.V / Qv;                      // h por tanque
+    const cs = Qs / Qw;                        // t sólido / m3 de solución
+    const fl = Qw / Qv;                        // fracción líquida (vol)
+    return { Qs, Qw, Vs, Qv, rhop, tau, cs, fl };
+  }
+
+  function agitation(p, h) {
+    const imp = IMP[p.imp];
+    const T = Math.cbrt(4 * p.V / (Math.PI * p.HT));
+    const D = p.DT * T;
+    const N = p.rpm / 60;
+    const P = imp.Np * h.rhop * 1000 * N * N * N * Math.pow(D, 5); // W
+    const PV = P / p.V;
+    const S = imp.S0 * Math.pow(1 / (3 * p.DT), 1.4);
+    const X = 100 * p.Cw / (1 - p.Cw);
+    const Njs = S * Math.pow(1e-6, 0.1) * Math.pow(9.81 * (p.rhos - 1), 0.45) *
+      Math.pow(X, 0.13) * Math.pow(p.D80 * 1e-6, 0.2) / Math.pow(D, 0.85); // rps
+    const ratio = N / Njs;
+    const susp = Math.min(1, Math.pow(ratio, 1.5));
+    const gP = Math.min(1.08, 0.45 + 0.55 * Math.tanh(1.4 * ratio) / Math.tanh(1.4 * 1.3));
+    const A = Math.PI * T * T / 4;
+    const vs = (p.air / 3600) / A;              // m/s
+    const kLa = (0.6 * 0.026 * Math.pow(PV, 0.4) * Math.pow(Math.max(vs, 1e-6), 0.5)) * 3600 + 0.4 * gP; // h^-1
+    const tip = Math.PI * D * N;
+    return { T, D, N, P, PV, Njs, rpmJs: Njs * 60, ratio, susp, gP, kLa, vs, tip, imp };
+  }
+
+  function mixingEff(p, ag) {
+    const s = ag.susp;
+    return {
+      pQ: p.pQ, pV: p.pV, Nb: p.Nb,
+      Fb: Math.min(0.95, p.Fb + (1 - p.Fb) * (1 - s) * 0.8),
+      q: p.q * Math.max(s, 0.05),
+    };
+  }
+
+  // Factores químicos para el oro
+  function goldK(p, c) {
+    const Ceff = c.CN * alphaCN(p.pH);
+    const gchem = 1 / (1 + C.K_CN / Math.max(Ceff, 1e-3) + K_O2 / Math.max(c.DO, 1e-3));
+    let gCu = 1, ratio = Infinity;
+    if (c.CuSol > 1e-3) {
+      const CuM = c.CuSol / MW.Cu;                 // mmol/L
+      const CNf = c.CN / MW.NaCN;                  // mmol/L
+      ratio = (CNf + 3 * CuM) / CuM;               // CN total / Cu (Lovera et al.)
+      gCu = ratio >= 4 ? 1 : Math.pow(ratio / 4, 4);
+    }
+    const gPb = 1 + 0.15 * Math.min(1, p.Pb / 50) * Math.min(1, p.S / 2);
+    const gf = 1 / (1 + C.CF * Math.pow(45 / p.D80, 4));
+    const k = C.K0 * gf * gchem * gpH(p.pH) * gT(p.T) * gd(p.D80) * gCu * gPb * c.gP;
+    return { k, gchem, gCu, ratio, Ceff, gf };
+  }
+
+  // Velocidades de consumo (mg NaCN / L·h) a concentración CN dada
+  function cnRates(p, h, CN, decay, gPfac) {
+    const react = REACT[p.sulf] || 1;
+    const fPb = p.Pb > 0 ? 1 - 0.35 * Math.min(1, p.Pb / 50) : 1;
+    const rS = KS * p.S * react * gsize(p.D80) * h.cs * CN / (150 + CN) * fPb * decay * gT(p.T);
+    const rV = KV * CN * (1 - alphaCN(p.pH)) * (1 + 3 * (p.airSpec || 0)) * gPfac;
+    return { rS, rV };
+  }
+
+  function o2Demand(p, h, decay) {
+    const react = REACT[p.sulf] || 1;
+    return KO * p.S * react * gsize(p.D80) * h.cs * decay * gT(p.T); // mg/L·h
+  }
+
+  function limeKgT(p, h) {
+    // Estimación: neutralización de acidez del mineral + elevar el pH del agua de proceso
+    const react = REACT[p.sulf] || 1;
+    const water = 1 / h.cs; // m3/t
+    const base = 0.35 + 0.08 * p.S * react + 2.6 * p.Cu * (p.CuSolFrac / 100);
+    return base * Math.pow(10, 0.42 * (p.pH - 10.5)) * (0.7 + 0.15 * water);
+  }
+
+  // ---------- Planta continua ----------
+  function plant(p) {
+    const h = hydraulics(p);
+    const ag = agitation(p, h);
+    const mix = mixingEff(p, ag);
+    const Cs = o2sat(p.T, p.alt, p.oxy === 'o2' ? 0.9 : 0.2095);
+    const fr = p.refr / 100, th = exposed(p.D80, p.dg);
+    const AuF = p.Au * (1 - fr) * th, AuS = p.Au * (1 - fr) * (1 - th), AuR = p.Au * fr;
+    let xf = AuF, xs = AuS;                      // g/t restante por población
+    const AgL = p.Ag * (1 - Math.min(0.9, fr + 0.1));
+    let xag = AgL;
+    const CuSolTot = p.Cu * 10 * (p.CuSolFrac / 100) * 1000; // g/t soluble
+    let cuRem = CuSolTot, CuSolL = 0;            // g/t restante; mg/L en solución
+    let CNin = 0, cumTau = 0;
+    const Vl = p.V * h.fl;                        // m3 de solución en el tanque
+    const tanks = [];
+    let addTot = 0, consS = 0, consV = 0, consCu = 0;
+    for (let i = 0; i < p.n; i++) {
+      const decay = Math.exp(-0.04 * cumTau);
+      const OUR = o2Demand(p, h, decay);
+      const DO = Math.max(0.1, Cs - OUR / ag.kLa);
+      let CN, add;
+      const cuLeach = CNv => {
+        const kc = KCU * CNv / (200 + CNv) * gT(p.T);
+        const out = cuRem / (1 + kc * h.tau);
+        return { out, rate: (cuRem - out) * h.Qs }; // g Cu/h
+      };
+      const bal = CNv => {
+        const r = cnRates(p, h, CNv, decay, ag.gP);
+        const cu = cuLeach(CNv);
+        const cuNaCN = cu.rate / MW.Cu * CN_PER_CU * MW.NaCN / 1000; // kg NaCN/h
+        const lossKgH = (r.rS + r.rV) * Vl / 1000 + cuNaCN;           // kg/h
+        return { r, cu, cuNaCN, lossKgH };
+      };
+      if (p.cnMode === 'set') {
+        CN = p.CNset;
+        const b = bal(CN);
+        add = Math.max(0, h.Qw * (CN - CNin) / 1000 + b.lossKgH);
+      } else {
+        add = i === 0 ? p.dose * h.Qs : (p.dose2 && i === p.dose2Tank - 1 ? p.dose2 * h.Qs : 0);
+        let lo = 0, hi = CNin + add * 1000 / h.Qw + 1;
+        for (let it = 0; it < 60; it++) {
+          const mid = (lo + hi) / 2;
+          const b = bal(mid);
+          const f = h.Qw * (CNin - mid) / 1000 + add - b.lossKgH;
+          if (f > 0) lo = mid; else hi = mid;
+        }
+        CN = (lo + hi) / 2;
+      }
+      const b = bal(CN);
+      const cuTank = b.cu;
+      const CuSolOut = CuSolL + cuTank.rate / h.Qw; // mg/L
+      const gk = goldK(p, { CN, DO, CuSol: CuSolOut, gP: ag.gP });
+      const Hf = tankH(gk.k, h.tau, mix), Hs = tankH(gk.k * K_SLOW, h.tau, mix);
+      const Hag = tankH(gk.k * K_AG, h.tau, mix);
+      xf *= Hf; xs *= Hs; xag *= Hag;
+      cuRem = cuTank.out; CuSolL = CuSolOut;
+      cumTau += h.tau;
+      const AuRes = xf + xs + AuR;
+      const ext = 1 - AuRes / p.Au;
+      const AuSol = (p.Au - AuRes) * h.Qs / h.Qw; // mg/L
+      addTot += add; consS += b.r.rS * Vl / 1000; consV += b.r.rV * Vl / 1000; consCu += b.cuNaCN;
+      tanks.push({
+        i: i + 1, tauCum: cumTau, CN, DO, OUR, add: add / h.Qs, k: gk.k, ext,
+        AuRes, AuSol, Ag: p.Ag > 0 ? 1 - (xag + (p.Ag - AgL)) / p.Ag : 0,
+        CuSol: CuSolOut, ratioCu: gk.ratio, gCu: gk.gCu, gchem: gk.gchem, Ceff: gk.Ceff,
+        HCN: 1 - alphaCN(p.pH),
+      });
+      CNin = CN;
+    }
+    const last = tanks[tanks.length - 1];
+    const resid = h.Qw * last.CN / 1000; // kg/h que salen con el relave
+    return {
+      h, ag, mix, Cs, tanks, last, th,
+      AuFeedSplit: { AuF, AuS, AuR },
+      NaCN: addTot / h.Qs,
+      NaCNbreak: { sulf: consS / h.Qs, vol: consV / h.Qs, cu: consCu / h.Qs, resid: resid / h.Qs },
+      CaO: limeKgT(p, h),
+      kW: ag.P * p.n / 1000,
+      kWhT: ag.P * p.n / 1000 / h.Qs,
+      tauTot: cumTau,
+    };
+  }
+
+  // ---------- Prueba en botella (batch) ----------
+  function batch(p, tEnd, replenish) {
+    const h = hydraulics(p);
+    const Cs = o2sat(p.T, p.alt, p.oxy === 'o2' ? 0.9 : 0.2095);
+    const fr = p.refr / 100, th = exposed(p.D80, p.dg);
+    let xf = p.Au * (1 - fr) * th, xs = p.Au * (1 - fr) * (1 - th);
+    const AuR = p.Au * fr;
+    const CuSolTot = p.Cu * 10 * (p.CuSolFrac / 100) * 1000;
+    let cuRem = CuSolTot, CuSolL = 0;
+    let CN = p.CNset, added = p.CNset / h.cs / 1000; // kg/t inicial
+    const dt = 0.02, pts = [{ t: 0, ext: 0, CN, DO: Cs, Cu: 0 }];
+    const kLa = 30; // botella abierta sobre rodillos (renovación de aire continua)
+    let consumed = 0;
+    for (let t = dt; t <= tEnd + 1e-9; t += dt) {
+      const decay = Math.exp(-0.04 * t);
+      const DO = Math.max(0.1, Cs - o2Demand(p, h, decay) / kLa);
+      const r = cnRates(p, h, CN, decay, 1);
+      const kc = KCU * CN / (200 + CN) * gT(p.T);
+      const dCu = cuRem * kc * dt;                  // g/t
+      cuRem -= dCu; CuSolL += dCu * h.cs;            // mg/L
+      const dCNcu = dCu * h.cs / MW.Cu * CN_PER_CU * MW.NaCN; // mg/L NaCN
+      const dCN = (r.rS + r.rV) * dt + dCNcu;
+      consumed += dCN / h.cs / 1000;
+      CN = Math.max(0, CN - dCN);
+      if (replenish && CN < p.CNset) { added += (p.CNset - CN) / h.cs / 1000; CN = p.CNset; }
+      const gk = goldK(p, { CN, DO, CuSol: CuSolL, gP: 1 });
+      xf *= Math.exp(-gk.k * dt); xs *= Math.exp(-gk.k * K_SLOW * dt);
+      if (Math.abs(t / 0.25 - Math.round(t / 0.25)) < 1e-6 || t + dt > tEnd + 1e-9)
+        pts.push({ t, ext: 1 - (xf + xs + AuR) / p.Au, CN, DO, Cu: CuSolL });
+    }
+    const resid = CN / h.cs / 1000;
+    return { pts, ext: pts[pts.length - 1].ext, added, consumed, resid, CaO: limeKgT(p, h), h };
+  }
+
+  return { C, plant, batch, IMP, REACT, o2sat, alphaCN, exposed, hydraulics, agitation };
+})();
+
+
+SIM.BASE = {
+  mode: 'plant', cap: 2880, Cw: 0.5, rhos: 2.9, Au: 6.9, Ag: 62, D80: 76, dg: 45, refr: 2,
+  S: 13, sulf: 'pirita', Cu: 1.4, CuSolFrac: 1, n: 6, V: 480, HT: 1.1,
+  imp: 'hydro', DT: 0.4, rpm: 30, pQ: 0.11, pV: 0.05, Nb: 12, Fb: 0.2, q: 0.07,
+  cnMode: 'set', CNset: 300, dose: 1.3, pH: 10.8, T: 25, alt: 200, oxy: 'air', air: 150, Pb: 0,
+  tBatch: 24, replenish: true, rec: 'cil', price: 4000, pNaCN: 2.6, pCaO: 0.2, pkWh: 0.12,
+};
+SIM.PRESETS = {
+  bazin: { label: 'Circuito de 6 tanques · Bazin et al.', p: {} },
+  small: { label: 'Planta pequeña 120 t/d (ejemplo)', p: { cap: 120, Cw: 0.42, rhos: 2.75, Au: 8, Ag: 20, D80: 75, dg: 30, refr: 4, S: 4, Cu: 0.05, CuSolFrac: 10, n: 5, V: 60, imp: 'pbt', DT: 0.33, rpm: 70, pQ: 0.08, pV: 0.05, Fb: 0.15, CNset: 500, pH: 10.8, T: 22, alt: 1200, air: 20, rec: 'cip' } },
+  yahya: { label: '5 CSTR ideales · Yahya et al. 2020', p: { n: 5, pQ: 0, pV: 0, Fb: 0, S: 0.5, refr: 0, Cu: 0, dg: 100, Ag: 0, cap: 12000 } },
+  ruiz: { label: 'Botella 7 h · Ruiz-Córdoba et al. 2019', p: { mode: 'batch', tBatch: 7, Cw: 0.33, rhos: 2.75, Au: 5.25, Ag: 82.5, D80: 60, dg: 25, refr: 13, S: 5, Cu: 0, CNset: 1134, pH: 11, T: 22, alt: 700 } },
+  lovera: { label: 'Mineral con cianicidas · Lovera et al.', p: { mode: 'batch', tBatch: 24, Cw: 1 / 3, rhos: 3.0, Au: 6.84, Ag: 0, D80: 150, dg: 20, refr: 56, S: 3, sulf: 'marcasita', Cu: 3.64, CuSolFrac: 18, CNset: 1500, pH: 10.75, T: 20, alt: 150, rec: 'mc' } },
+};
+SIM.preset = k => Object.assign({}, SIM.BASE, SIM.PRESETS[k].p);
+
+</script>
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const nf = (v, d = 1) => (v == null || !isFinite(v)) ? '—' : v.toLocaleString('es-CO', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  // ---------- Especificación de controles ----------
+  // [clave, etiqueta, min, max, paso, unidad, escala(UI = valor*escala), decimales, ayuda, modos]
+  const G = [
+    { id: 'feed', t: 'Alimentación', tag: 'capacidad · pulpa', open: true, f: [
+      ['cap', 'Capacidad de planta', 20, 15000, 10, 't/d', 1, 0, null, 'plant'],
+      ['Cw', 'Densidad de pulpa', 20, 60, 1, '% sólidos', 100, 0, 'Bazin: 50 %; botella: 33 %'],
+      ['rhos', 'Densidad del mineral', 2.5, 4.0, 0.05, 't/m³', 1, 2],
+      ['Au', 'Ley de oro', 0.5, 30, 0.1, 'g/t', 1, 1],
+      ['Ag', 'Ley de plata', 0, 150, 1, 'g/t', 1, 0],
+    ]},
+    { id: 'min', t: 'Mineralogía', tag: 'oro · cianicidas', f: [
+      ['D80', 'Granulometría D80', 30, 250, 1, 'µm', 1, 0, 'mesh'],
+      ['dg', 'Tamaño de grano de oro', 5, 120, 1, 'µm', 1, 0, 'Fija la fracción de oro expuesto [1]'],
+      ['refr', 'Oro refractario (encapsulado)', 0, 70, 1, '%', 1, 0, 'No se disuelve sin pretratamiento'],
+      ['S', 'Sulfuros en el mineral', 0, 40, 0.5, '%', 1, 1],
+      ['sulf', 'Sulfuro dominante', 'select', [['pirita', 'Pirita (reactividad baja)'], ['arsenopirita', 'Arsenopirita'], ['marcasita', 'Marcasita'], ['pirrotita', 'Pirrotita (muy cianicida)']]],
+      ['Cu', 'Cobre total', 0, 6, 0.01, '%', 1, 2],
+      ['CuSolFrac', 'Cobre soluble en cianuro', 0, 100, 1, '% del Cu', 1, 0, 'Malaquita, calcosina: alto · calcopirita: bajo'],
+    ]},
+    { id: 'circ', t: 'Circuito de tanques', tag: 'volumen · RTD', modes: 'plant', f: [
+      ['n', 'Número de tanques', 1, 10, 1, '', 1, 0],
+      ['V', 'Volumen útil por tanque', 10, 2000, 5, 'm³', 1, 0],
+      ['HT', 'Relación altura/diámetro', 0.8, 1.5, 0.05, 'H/T', 1, 2],
+      ['pQ', 'Flujo en cortocircuito (bypass)', 0, 30, 1, '%', 100, 0, 'Bazin: 11 %'],
+      ['pV', 'Volumen del bypass', 0, 20, 1, '%', 100, 0, 'Bazin: 5 %'],
+      ['Fb', 'Zona muerta', 0, 50, 1, '%', 100, 0, 'Bazin: 20 %'],
+      ['q', 'Intercambio con zona muerta', 1, 30, 1, '%', 100, 0, 'Bazin: 7 %'],
+    ]},
+    { id: 'agit', t: 'Agitación y aireación', tag: 'impulsor · rpm', modes: 'plant', f: [
+      ['imp', 'Tipo de impulsor', 'select', [['hydro', 'Hidrofoil (tipo A310) · Np 0,30'], ['pbt', 'Palas inclinadas 45° · Np 1,27'], ['rushton', 'Turbina Rushton · Np 5,0']]],
+      ['DT', 'Diámetro impulsor / tanque', 0.25, 0.55, 0.01, 'D/T', 1, 2],
+      ['rpm', 'Velocidad del agitador', 5, 250, 1, 'rpm', 1, 0, 'njs'],
+      ['air', 'Aire inyectado por tanque', 0, 1500, 5, 'Nm³/h', 1, 0],
+    ]},
+    { id: 'chem', t: 'Química de lixiviación', tag: 'NaCN · pH · O₂', open: true, f: [
+      ['cnMode', 'Control de cianuro', 'select', [['set', 'Mantener [NaCN] libre en cada tanque'], ['dose', 'Dosis fija en el tanque 1']], 'plant'],
+      ['CNset', 'Concentración de NaCN', 50, 3000, 10, 'mg/L', 1, 0, 'lb'],
+      ['dose', 'Dosis de NaCN', 0.1, 10, 0.05, 'kg/t', 1, 2, null, 'plant'],
+      ['pH', 'pH (con cal)', 8.5, 12.5, 0.05, '', 1, 2, 'Rango usual 10,5–11,5 [2][4]'],
+      ['oxy', 'Oxidante', 'select', [['air', 'Aire'], ['o2', 'Oxígeno puro']]],
+      ['T', 'Temperatura', 5, 60, 1, '°C', 1, 0],
+      ['alt', 'Altitud de la planta', 0, 4500, 50, 'm s.n.m.', 1, 0, 'Reduce la saturación de O₂'],
+      ['Pb', 'Nitrato de plomo', 0, 300, 5, 'g/t', 1, 0, 'Acelera la lixiviación en menas sulfuradas'],
+      ['tBatch', 'Tiempo de lixiviación', 1, 72, 0.5, 'h', 1, 1, null, 'batch'],
+      ['replenish', 'Reponer cianuro durante la prueba', 'check', null, 'batch'],
+    ]},
+    { id: 'eco', t: 'Recuperación y economía', tag: 'CIL · costos', f: [
+      ['rec', 'Recuperación del oro disuelto', 'select', [['cil', 'Carbón en lixiviación (CIL)'], ['cip', 'Carbón en pulpa (CIP)'], ['mc', 'Merrill-Crowe (zinc)']]],
+      ['price', 'Precio del oro (editable)', 500, 6000, 10, 'US$/oz', 1, 0],
+      ['pNaCN', 'Precio del NaCN', 0.5, 6, 0.05, 'US$/kg', 1, 2],
+      ['pCaO', 'Precio de la cal', 0.05, 1, 0.01, 'US$/kg', 1, 2],
+      ['pkWh', 'Costo de energía', 0.03, 0.4, 0.01, 'US$/kWh', 1, 2],
+    ]},
+  ];
+  const MESH = [[35, 500], [48, 300], [65, 212], [100, 150], [140, 106], [170, 90], [200, 75], [270, 53], [325, 45], [400, 38]];
+  const meshOf = d => { let best = MESH[0]; for (const m of MESH) if (Math.abs(m[1] - d) < Math.abs(best[1] - d)) best = m; return best; };
+
+  let presetKey = 'bazin';
+  let P = SIM.preset(presetKey);
+  const ctrls = {};
+
+  function fmtVal(spec, v) {
+    const [k, , , , , unit, sc, dec] = spec;
+    return nf(v * sc, dec) + (unit ? ' ' + unit : '');
+  }
+
+  function buildControls() {
+    const host = $('groups'); host.innerHTML = '';
+    for (const g of G) {
+      const d = document.createElement('details'); d.className = 'grp'; d.open = !!g.open; d.id = 'g_' + g.id;
+      if (g.modes) d.dataset.modes = g.modes;
+      d.innerHTML = `<summary><h3>${g.t}</h3><span class="tag">${g.tag}</span></summary><div class="fields"></div>`;
+      const box = d.querySelector('.fields');
+      for (const s of g.f) {
+        const k = s[0], w = document.createElement('div'); w.className = 'f'; w.id = 'w_' + k;
+        const modes = s[2] === 'select' ? s[4] : s[2] === 'check' ? s[4] : s[9];
+        if (modes) w.dataset.modes = modes;
+        if (s[2] === 'select') {
+          w.innerHTML = `<label for="c_${k}">${s[1]}</label><select id="c_${k}">${s[3].map(o => `<option value="${o[0]}">${o[1]}</option>`).join('')}</select>`;
+          const el = w.querySelector('select');
+          el.addEventListener('change', () => { P[k] = el.value; run(); });
+          ctrls[k] = { el, set: v => el.value = v };
+        } else if (s[2] === 'check') {
+          w.innerHTML = `<label class="chk" for="c_${k}" style="justify-content:flex-start"><input type="checkbox" id="c_${k}"> ${s[1]}</label>`;
+          const el = w.querySelector('input');
+          el.addEventListener('change', () => { P[k] = el.checked; run(); });
+          ctrls[k] = { el, set: v => el.checked = !!v };
+        } else {
+          const [, lab, mn, mx, st, unit, sc, dec, help] = s;
+          w.innerHTML = `<label for="c_${k}">${lab}<output id="o_${k}"></output></label><input type="range" id="c_${k}" min="${mn}" max="${mx}" step="${st}"><div class="hint" id="h_${k}">${help && !['mesh', 'njs', 'lb'].includes(help) ? help : ''}</div>`;
+          const el = w.querySelector('input'), out = w.querySelector('output');
+          el.addEventListener('input', () => { P[k] = parseFloat(el.value) / sc; out.textContent = fmtVal(s, P[k]); run(); });
+          ctrls[k] = { el, set: v => { el.value = v * sc; out.textContent = fmtVal(s, v); }, spec: s };
+        }
+        box.appendChild(w);
+      }
+      host.appendChild(d);
+    }
+  }
+  function syncControls() { for (const k in ctrls) ctrls[k].set(P[k]); }
+  function applyMode() {
+    $('mPlant').setAttribute('aria-pressed', P.mode === 'plant');
+    $('mBatch').setAttribute('aria-pressed', P.mode === 'batch');
+    document.querySelectorAll('[data-modes]').forEach(e => e.hidden = e.dataset.modes !== P.mode);
+    const hideDose = P.mode === 'plant' && P.cnMode === 'dose';
+    $('w_CNset').hidden = hideDose;
+    $('w_dose').hidden = !(P.mode === 'plant' && P.cnMode === 'dose');
+  }
+
+  const sel = $('preset');
+  sel.innerHTML = Object.entries(SIM.PRESETS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
+  sel.addEventListener('change', () => { presetKey = sel.value; P = SIM.preset(presetKey); syncControls(); run(); });
+  $('reset').addEventListener('click', () => { P = SIM.preset(presetKey); syncControls(); run(); });
+  $('mPlant').addEventListener('click', () => { P.mode = 'plant'; run(); });
+  $('mBatch').addEventListener('click', () => { P.mode = 'batch'; run(); });
+
+  // ---------- Gráficas ----------
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.font.size = 12;
+  Chart.defaults.animation = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? false : { duration: 250 };
+  const charts = {};
+  function baseOpts(yTitle, xTitle, yMin, yMax) {
+    const ink2 = css('--ink-2'), ink3 = css('--ink-3'), line = css('--line');
+    return {
+      responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: { backgroundColor: css('--panel'), titleColor: css('--ink'), bodyColor: ink2, borderColor: line, borderWidth: 1, padding: 10, boxPadding: 4, usePointStyle: true } },
+      scales: {
+        x: { title: { display: !!xTitle, text: xTitle, color: ink3 }, ticks: { color: ink3, maxRotation: 0, autoSkip: true }, grid: { display: false }, border: { color: line } },
+        y: { min: yMin, max: yMax, title: { display: !!yTitle, text: yTitle, color: ink3 }, ticks: { color: ink3 }, grid: { color: line, lineWidth: 0.6 }, border: { display: false } },
+      },
+    };
+  }
+  function lineDs(label, data, color, extra) {
+    return Object.assign({ label, data, borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 3.5, pointHoverRadius: 6, pointBorderColor: css('--panel'), pointBorderWidth: 2, tension: 0.25 }, extra || {});
+  }
+  function upsert(id, cfg) {
+    if (charts[id]) { charts[id].destroy(); }
+    charts[id] = new Chart($(id), cfg);
+  }
+
+  // ---------- Diagrama de flujo ----------
+  function flowPlant(r) {
+    const n = P.n, tw = 74, gap = 34, x0 = 120, W = x0 + n * (tw + gap) + 150, H = 300;
+    const ink = css('--ink'), ink2 = css('--ink-2'), ink3 = css('--ink-3'), gold = css('--gold'), acc = css('--accent'), tank = css('--tank'), edge = css('--tank-edge'), panel = css('--panel');
+    let s = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" aria-label="Circuito de ${n} tanques en serie">`;
+    s += `<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${ink2}"/></marker></defs>`;
+    s += `<text x="8" y="112" font-size="11" fill="${ink2}">Pulpa molida</text><text x="8" y="127" font-size="11" fill="${ink3}">${nf(r.h.Qs, 1)} t/h · ${nf(P.Cw * 100, 0)} %</text>`;
+    s += `<text x="8" y="142" font-size="11" fill="${ink3}">${nf(P.Au, 1)} g/t Au</text>`;
+    s += `<line x1="8" y1="150" x2="${x0 - 6}" y2="150" stroke="${ink2}" stroke-width="1.5" marker-end="url(#ar)"/>`;
+    const y0 = 70, th = 130;
+    r.tanks.forEach((t, i) => {
+      const x = x0 + i * (tw + gap);
+      const lvl = 0.86 * th, ext = Math.max(0, t.ext);
+      // tanque
+      s += `<rect x="${x}" y="${y0}" width="${tw}" height="${th}" rx="3" fill="${tank}" stroke="${edge}" stroke-width="1.2"/>`;
+      s += `<rect class="tankfill" x="${x + 2}" y="${y0 + th - lvl * ext}" width="${tw - 4}" height="${lvl * ext - 2}" fill="${gold}" fill-opacity="${0.18 + 0.5 * ext}"/>`;
+      s += `<line x1="${x + 2}" y1="${y0 + th - lvl}" x2="${x + tw - 2}" y2="${y0 + th - lvl}" stroke="${edge}" stroke-dasharray="3 3" stroke-width="0.8"/>`;
+      // agitador
+      const cx = x + tw / 2;
+      s += `<rect x="${cx - 9}" y="${y0 - 16}" width="18" height="12" rx="2" fill="${edge}"/>`;
+      s += `<line x1="${cx}" y1="${y0 - 4}" x2="${cx}" y2="${y0 + th - 30}" stroke="${ink2}" stroke-width="2"/>`;
+      s += P.imp === 'rushton' ? `<rect x="${cx - 13}" y="${y0 + th - 34}" width="26" height="8" fill="${ink2}"/>` :
+        `<path d="M${cx - 15},${y0 + th - 26} Q${cx - 6},${y0 + th - 36} ${cx},${y0 + th - 30} Q${cx + 6},${y0 + th - 24} ${cx + 15},${y0 + th - 34}" stroke="${ink2}" stroke-width="3" fill="none"/>`;
+      // aire
+      if (P.air > 0) s += `<line x1="${x + tw - 12}" y1="${y0 + th + 22}" x2="${x + tw - 12}" y2="${y0 + th - 8}" stroke="${acc}" stroke-width="1.2" marker-end="url(#ar)"/>`;
+      // NaCN
+      if (t.add > 0.005) s += `<line x1="${x + 12}" y1="${y0 - 30}" x2="${x + 12}" y2="${y0 + 6}" stroke="${acc}" stroke-width="1.5" marker-end="url(#ar)"/><text x="${x + 16}" y="${y0 - 34}" font-size="10" fill="${acc}">NaCN ${nf(t.add, 2)}</text>`;
+      // etiquetas
+      s += `<text x="${cx}" y="${y0 + th + 40}" text-anchor="middle" font-size="12" font-weight="500" fill="${ink}">T${t.i} · ${nf(t.ext * 100, 1)}%</text>`;
+      s += `<text x="${cx}" y="${y0 + th + 55}" text-anchor="middle" font-size="10" fill="${ink3}">CN ${nf(t.CN, 0)}</text>`;
+      s += `<text x="${cx}" y="${y0 + th + 68}" text-anchor="middle" font-size="10" fill="${ink3}">OD ${nf(t.DO, 1)}</text>`;
+      // tubería al siguiente
+      const xe = x + tw, nx = i < n - 1 ? x + tw + gap - 4 : x + tw + 40;
+      s += `<path d="M${xe},${y0 + 28} H${xe + 10} V${y0 + th - 10} H${nx}" fill="none" stroke="${ink2}" stroke-width="1.5" marker-end="url(#ar)"/>`;
+    });
+    const xr = x0 + n * (tw + gap) + 10;
+    const recN = { cil: 'CIL', cip: 'CIP', mc: 'Merrill-Crowe' }[P.rec];
+    s += `<rect x="${xr}" y="${y0 + th - 44}" width="120" height="58" rx="4" fill="${panel}" stroke="${acc}" stroke-width="1.4"/>`;
+    s += `<text x="${xr + 60}" y="${y0 + th - 22}" text-anchor="middle" font-size="12" font-weight="500" fill="${ink}">${recN}</text>`;
+    s += `<text x="${xr + 60}" y="${y0 + th - 6}" text-anchor="middle" font-size="10" fill="${ink3}">${nf(r.last.AuSol, 2)} mg/L Au</text>`;
+    s += `<text x="${xr}" y="${y0 - 24}" font-size="10" fill="${ink3}">Relave: ${nf(r.last.AuRes, 2)} g/t</text>`;
+    s += `<text x="${x0}" y="${H - 6}" font-size="10" fill="${ink3}">τ por tanque ${nf(r.h.tau, 2)} h · CN y OD en mg/L · NaCN en kg/t · llenado dorado = extracción acumulada</text>`;
+    return s + '</svg>';
+  }
+  function flowBatch(b) {
+    const ink = css('--ink'), ink2 = css('--ink-2'), ink3 = css('--ink-3'), gold = css('--gold'), tank = css('--tank'), edge = css('--tank-edge');
+    const ext = b.ext, W = 640, H = 200;
+    let s = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" aria-label="Prueba en botella sobre rodillos">`;
+    s += `<rect x="150" y="50" width="260" height="90" rx="40" fill="${tank}" stroke="${edge}" stroke-width="1.4"/>`;
+    s += `<rect x="410" y="78" width="26" height="34" rx="4" fill="${edge}"/>`;
+    s += `<path d="M160,${140 - 2} Q280,${140 - 2 - 70 * ext} 400,${140 - 2} Z" fill="${gold}" fill-opacity="${0.25 + 0.5 * ext}"/>`;
+    s += `<circle cx="210" cy="160" r="18" fill="none" stroke="${ink2}" stroke-width="2"/><circle cx="350" cy="160" r="18" fill="none" stroke="${ink2}" stroke-width="2"/>`;
+    s += `<line x1="150" y1="180" x2="410" y2="180" stroke="${ink3}" stroke-width="1"/>`;
+    s += `<text x="280" y="100" text-anchor="middle" font-size="16" font-weight="500" fill="${ink}">${nf(ext * 100, 1)} % Au</text>`;
+    s += `<text x="280" y="34" text-anchor="middle" font-size="11" fill="${ink2}">Botella en rodillos · ${nf(P.Cw * 100, 0)} % sólidos · L/S ${nf((1 - P.Cw) / P.Cw, 1)}</text>`;
+    s += `<text x="20" y="80" font-size="11" fill="${ink2}">t = ${nf(P.tBatch, 1)} h</text><text x="20" y="96" font-size="11" fill="${ink3}">NaCN ${nf(P.CNset, 0)} mg/L</text><text x="20" y="112" font-size="11" fill="${ink3}">pH ${nf(P.pH, 2)}</text>`;
+    s += `<text x="460" y="80" font-size="11" fill="${ink2}">Solución rica</text><text x="460" y="96" font-size="11" fill="${ink3}">${nf((P.Au * ext) * b.h.cs, 2)} mg/L Au</text><text x="460" y="112" font-size="11" fill="${ink3}">${nf(b.pts.at(-1).Cu / 1000, 2)} g/L Cu</text>`;
+    return s + '</svg>';
+  }
+
+  // ---------- Diagnóstico ----------
+  function diagnose(r, isPlant) {
+    const A = [];
+    const add = (lvl, t, src) => A.push({ lvl, t, src });
+    if (P.pH < 9.7) add('crit', `<b>pH ${nf(P.pH, 2)}:</b> ${nf((1 - SIM.alphaCN(P.pH)) * 100, 0)} % del cianuro está como HCN (pKa 9,21). Hay pérdida de reactivo por volatilización y riesgo de gas tóxico. Suba el pH con cal a 10,5–11.`, '[2][4][5]');
+    else if (P.pH < 10.3) add('warn', `<b>pH bajo para cianuración:</b> ${nf((1 - SIM.alphaCN(P.pH)) * 100, 1)} % como HCN. El rango recomendado es 10,5–11,5.`, '[2][4]');
+    if (P.pH > 11.6) add('warn', `<b>pH alto (${nf(P.pH, 2)}):</b> la velocidad de disolución cae y el consumo de cal sube a ${nf(r.CaO, 1)} kg/t.`, '[1]');
+    if (isPlant) {
+      const ag = r.ag;
+      if (ag.ratio < 1) add('crit', `<b>Sólidos sin suspender:</b> ${nf(P.rpm, 0)} rpm está por debajo de N<sub>js</sub> = ${nf(ag.rpmJs, 0)} rpm (Zwietering). Se forma una cama en el fondo y crece la zona muerta.`, '[5]');
+      else if (ag.ratio > 2.2) add('info', `<b>Agitación excesiva:</b> N/N<sub>js</sub> = ${nf(ag.ratio, 1)}. Por encima de la suspensión completa el beneficio es pequeño y se gasta energía${P.rec === 'cil' ? ' y se degrada el carbón' : ''}.`, '[6]');
+      if (P.rec === 'cil' && ag.tip > 5.5) add('warn', `<b>Velocidad periférica ${nf(ag.tip, 1)} m/s:</b> en CIL una punta de impulsor rápida desgasta el carbón activado.`, '');
+      const minDO = Math.min(...r.tanks.map(t => t.DO));
+      if (minDO < 4) add('warn', `<b>Oxígeno limitante:</b> el OD baja a ${nf(minDO, 1)} mg/L. Aumente el aire, use oxígeno puro o peróxido. La saturación aquí es ${nf(r.Cs, 1)} mg/L.`, '[1][3]');
+      if (r.tauTot < 12) add('info', `<b>Tiempo de residencia corto:</b> ${nf(r.tauTot, 1)} h en total. Para menas típicas se usan 16–48 h.`, '[1]');
+      if (P.pQ > 0.12 || P.Fb > 0.25) add('info', `<b>Mezcla deficiente:</b> el bypass y la zona muerta restan extracción. Reducir la zona muerta de 20 % a 5 % fue la mejora de mayor valor en Bazin et al.`, '[1]');
+    }
+    const cuSol = isPlant ? r.last.CuSol : r.pts.at(-1).Cu;
+    const ratio = isPlant ? Math.min(...r.tanks.map(t => t.ratioCu)) : null;
+    if (cuSol > 300) add('warn', `<b>Cobre en solución ${nf(cuSol, 0)} mg/L:</b> supera 0,03 %, el límite industrial usual. El cobre compite por el cianuro.`, '[4]');
+    if (ratio != null && ratio < 4) add('crit', `<b>Relación CN<sub>total</sub>/Cu = ${nf(ratio, 2)} &lt; 4:</b> el cobre deja al oro sin cianuro libre y frena su disolución.`, '[4]');
+    if (P.rec === 'mc' && cuSol > 100) add('warn', `<b>Merrill-Crowe con cobre:</b> la precipitación con zinc es deficiente con cobre alto. Lovera et al. recomiendan CIP.`, '[4]');
+    const cons = isPlant ? r.NaCN : r.consumed;
+    if (cons > 3) add('crit', `<b>Consumo de NaCN ${nf(cons, 1)} kg/t:</b> el proceso puede ser antieconómico. Considere lixiviación ácida previa del cobre o tostación.`, '[4]');
+    if (P.refr > 20) add('warn', `<b>${nf(P.refr, 0)} % de oro refractario:</b> la cianuración directa no lo alcanza. Hace falta oxidación previa o remolienda.`, '[4][6]');
+    if (P.D80 < 45) add('info', `<b>Molienda muy fina (D80 ${nf(P.D80, 0)} µm):</b> más lamas y consumo de reactivos. Ruiz-Córdoba et al. hallaron el óptimo en −200 mallas.`, '[2]');
+    else if (P.D80 > 130) add('info', `<b>Molienda gruesa (D80 ${nf(P.D80, 0)} µm):</b> parte del oro queda sin exponer.`, '[1][2]');
+    if (P.T > 40) add('info', `<b>Temperatura ${nf(P.T, 0)} °C:</b> acelera la difusión pero baja la solubilidad del O₂ y aumenta la degradación del cianuro.`, '[3][6]');
+    const ext = isPlant ? r.last.ext : r.ext;
+    if (!A.some(a => a.lvl === 'crit' || a.lvl === 'warn')) add('good', `<b>Operación dentro de rango.</b> Extracción de ${nf(ext * 100, 1)} % sin alertas de pH, oxígeno, suspensión ni cianicidas.`, '');
+    const order = { crit: 0, warn: 1, info: 2, good: 3 };
+    A.sort((a, b) => order[a.lvl] - order[b.lvl]);
+    const lab = { crit: 'CRÍTICO', warn: 'ATENCIÓN', info: 'NOTA', good: 'OK' };
+    $('alerts').innerHTML = A.map(a => `<div class="al ${a.lvl}"><span class="ic">${lab[a.lvl]}</span><div>${a.t} <span class="src">${a.src}</span></div></div>`).join('');
+  }
+
+  // ---------- Recuperación y economía ----------
+  function recEff(cuSol) {
+    const c = Math.min(1, cuSol / 1000);
+    return { cil: 0.985 - 0.03 * c, cip: 0.98 - 0.03 * c, mc: 0.99 - 0.25 * c }[P.rec];
+  }
+
+  // ---------- Barrido ----------
+  const SW = [
+    ['CNset', 'Concentración de NaCN', 'mg/L', 50, 2000],
+    ['pH', 'pH', '', 9, 12.5],
+    ['D80', 'Granulometría D80', 'µm', 35, 200],
+    ['rpm', 'Velocidad del agitador', 'rpm', 5, 150, 'plant'],
+    ['n', 'Número de tanques', '', 1, 10, 'plant'],
+    ['cap', 'Capacidad', 't/d', 200, 8000, 'plant'],
+    ['Cw', 'Densidad de pulpa', '% sólidos', 0.25, 0.6],
+    ['tBatch', 'Tiempo de lixiviación', 'h', 1, 72, 'batch'],
+    ['T', 'Temperatura', '°C', 5, 60],
+    ['alt', 'Altitud', 'm', 0, 4000],
+    ['Cu', 'Cobre total', '%', 0, 4],
+  ];
+  const swSel = $('swVar');
+  function fillSweep() {
+    const cur = swSel.value;
+    swSel.innerHTML = SW.filter(s => !s[5] || s[5] === P.mode).map(s => `<option value="${s[0]}">${s[1]}</option>`).join('');
+    if ([...swSel.options].some(o => o.value === cur)) swSel.value = cur;
+  }
+  swSel.addEventListener('change', () => run());
+  function evalExt(pp) {
+    if (pp.mode === 'plant') { const r = SIM.plant(pp); return r.last.ext; }
+    return SIM.batch(pp, pp.tBatch, pp.replenish).ext;
+  }
+
+  // ---------- Validación (Ruiz-Córdoba et al., tabla 9) ----------
+  const GZ = [[3,270,2.5,83.2],[3,270,1,68.48],[3,140,2.5,76.48],[7.5,270,1.75,78.4],[12,270,2.5,72],[12,200,1.75,86.4],[3,200,1.75,73.28],[12,140,2.5,81.76],[7.5,200,2.5,89.6],[3,140,1,60.96],[12,140,1,71.52],[7.5,200,1.75,83.68],[7.5,200,1,81.76],[12,270,1,82.4],[7.5,200,1.75,80.48],[7.5,140,1.75,72.8]];
+  function validation() {
+    const base = SIM.preset('ruiz'), m2d = { 140: 84, 200: 60, 270: 42 };
+    let se = 0;
+    const pts = GZ.map(([t, m, c, y]) => { const e = SIM.batch(Object.assign({}, base, { D80: m2d[m], CNset: c * 453.6 }), t, true).ext * 100; se += (e - y) ** 2; return { x: y, y: e, t, m, c }; });
+    const rmse = Math.sqrt(se / GZ.length);
+    const o = baseOpts('Predicha por el simulador (%)', 'Medida en laboratorio (%)', 55, 95);
+    o.scales.x.type = 'linear'; o.scales.x.min = 55; o.scales.x.max = 95; o.scales.x.grid = { color: css('--line'), lineWidth: 0.6 };
+    o.interaction = { mode: 'nearest', intersect: true };
+    o.plugins.tooltip.callbacks = { label: c => { const p = c.raw; return p.t != null ? `${p.t} h · −${p.m} mallas · ${p.c} lb/m³ → medida ${nf(p.x, 1)} %, modelo ${nf(p.y, 1)} %` : 'Ajuste perfecto (y = x)'; } };
+    upsert('cVal', { type: 'scatter', data: { datasets: [
+      { label: 'y = x', data: [{ x: 55, y: 55 }, { x: 95, y: 95 }], type: 'line', borderColor: css('--ink-3'), borderDash: [4, 4], borderWidth: 1, pointRadius: 0 },
+      { label: 'Pruebas', data: pts, backgroundColor: css('--gold'), borderColor: css('--panel'), borderWidth: 2, pointRadius: 6, pointHoverRadius: 8 },
+    ] }, options: o });
+    $('valNote').textContent = `16 pruebas (tiempo 3–12 h, −140 a −270 mallas, 1–2,5 lb NaCN/m³). Error cuadrático medio del modelo: ${nf(rmse, 1)} puntos. Las réplicas del punto central del estudio difieren 3,2 puntos entre sí.`;
+  }
+
+  // ---------- Render ----------
+  let raf = 0;
+  function run() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
+  function render() {
+    applyMode(); fillSweep();
+    const m = meshOf(P.D80);
+    $('h_D80').textContent = `≈ −${m[0]} mallas Tyler (${m[1]} µm)`;
+    $('h_CNset').textContent = `${nf(P.CNset / 453.6, 2)} lb/m³ · ${nf(P.CNset / 49.01 * 26.02, 0)} mg/L CN⁻`;
+    const isPlant = P.mode === 'plant';
+    const gold = css('--gold'), s2 = css('--s2'), s3 = css('--s3');
+    if (isPlant) {
+      const r = SIM.plant(P);
+      const L = r.last, eff = recEff(L.CuSol), recov = L.ext * eff;
+      $('h_rpm').textContent = `N_js (suspensión completa) ≈ ${nf(r.ag.rpmJs, 0)} rpm · N/N_js = ${nf(r.ag.ratio, 2)}`;
+      const ozd = r.h.Qs * 24 * P.Au * recov / 31.1035;
+      const rev = ozd * P.price;
+      const cost = (r.NaCN * P.pNaCN + r.CaO * P.pCaO + r.kWhT * P.pkWh) * r.h.Qs * 24;
+      $('kpis').innerHTML = [
+        ['hero', 'Extracción de oro', nf(L.ext * 100, 1), '%', `Ag ${nf(L.Ag * 100, 1)} %`],
+        ['', 'Recuperación global', nf(recov * 100, 1), '%', `${({ cil: 'CIL', cip: 'CIP', mc: 'Merrill-Crowe' })[P.rec]} ${nf(eff * 100, 1)} %`],
+        ['', 'Producción de oro', nf(ozd, ozd < 100 ? 1 : 0), 'oz/d', `${nf(ozd * 31.1035, 0)} g/d`],
+        ['', 'Consumo de NaCN', nf(r.NaCN, 2), 'kg/t', `CaO ${nf(r.CaO, 2)} kg/t`],
+        ['', 'Residencia total', nf(r.tauTot, 1), 'h', `${P.n} × ${nf(r.h.tau, 2)} h`],
+        ['', 'Ingreso − reactivos y energía', nf((rev - cost) / 1000, 0), 'kUS$/d', `costo ${nf(cost / (r.h.Qs * 24), 2)} US$/t`],
+      ].map(k => `<div class="kpi ${k[0]}"><div class="k">${k[1]}</div><div class="n">${k[2]}<small>${k[3]}</small></div><div class="s">${k[4]}</div></div>`).join('');
+      $('flowTitle').textContent = 'Diagrama del circuito';
+      $('flowSub').textContent = `${nf(r.h.Qv, 0)} m³/h de pulpa · densidad ${nf(r.h.rhop, 2)} t/m³ · ${nf(r.h.Qw, 0)} m³/h de solución`;
+      $('flow').innerHTML = flowPlant(r);
+
+      const labs = r.tanks.map(t => 'T' + t.i);
+      const dsets = [lineDs('Oro', r.tanks.map(t => +(t.ext * 100).toFixed(2)), gold)];
+      if (P.Ag > 0) dsets.push(lineDs('Plata', r.tanks.map(t => +(t.Ag * 100).toFixed(2)), s2));
+      if (presetKey === 'yahya') dsets.push(lineDs('Yahya et al., tabla 2 (escalada)', [0.607, 0.848, 0.948, 0.984, 1.0].slice(0, P.n).map(v => +(v * L.ext * 100).toFixed(2)), s3, { borderDash: [5, 4], pointStyle: 'rectRot' }));
+      const po = baseOpts('Extracción acumulada (%)', 'Tanque', 0, 100);
+      po.plugins.tooltip.callbacks = { label: c => `${c.dataset.label}: ${nf(c.parsed.y, 1)} %` };
+      upsert('cProf', { type: 'line', data: { labels: labs, datasets: dsets }, options: po });
+      $('lgProf').innerHTML = dsets.map(d => `<span><i style="background:${d.borderColor}"></i>${d.label}</span>`).join('');
+      $('profTitle').textContent = 'Extracción por tanque';
+      $('profSub').textContent = `Relave final ${nf(L.AuRes, 2)} g/t Au`;
+
+      const co = baseOpts('NaCN libre (mg/L)', null, 0); co.plugins.tooltip.callbacks = { label: c => `NaCN: ${nf(c.parsed.y, 0)} mg/L` };
+      upsert('cCN', { type: 'bar', data: { labels: labs, datasets: [{ label: 'NaCN', data: r.tanks.map(t => t.CN), backgroundColor: css('--accent'), borderRadius: 4, borderSkipped: 'bottom', maxBarThickness: 36 }] }, options: co });
+      const doo = baseOpts('Oxígeno disuelto (mg/L)', null, 0, Math.ceil(Math.max(r.Cs, 1) + 1)); doo.plugins.tooltip.callbacks = { label: c => `OD: ${nf(c.parsed.y, 2)} mg/L` };
+      upsert('cDO', { type: 'line', data: { labels: labs, datasets: [lineDs('OD', r.tanks.map(t => +t.DO.toFixed(2)), s2), lineDs('Saturación', r.tanks.map(() => +r.Cs.toFixed(2)), css('--ink-3'), { borderDash: [4, 4], pointRadius: 0, borderWidth: 1 })] }, options: doo });
+      $('chemSub').textContent = `Saturación de O₂: ${nf(r.Cs, 1)} mg/L a ${nf(P.T, 0)} °C y ${nf(P.alt, 0)} m · CN⁻/O₂ molar ${nf((L.Ceff / 49.01) / (L.DO / 32), 0)} (Habashi: ≈ 6)`;
+
+      const B = r.NaCNbreak, tot = B.sulf + B.cu + B.vol + B.resid;
+      const parts = [['Sulfuros → SCN⁻', B.sulf, gold], ['Cobre → Cu(CN)₃²⁻', B.cu, s2], ['Volatilización de HCN', B.vol, s3], ['Residual en el relave', B.resid, css('--ink-3')]];
+      cnBlock(parts, tot, `Adición total ${nf(r.NaCN, 2)} kg/t · ${nf(r.NaCN * r.h.Qs * 24, 0)} kg/d`);
+      $('agBlock').hidden = false;
+      const ag = r.ag;
+      $('agSpecs').innerHTML = [
+        ['Diámetro × altura del tanque', `${nf(ag.T, 2)} × ${nf(ag.T * P.HT, 2)} m`],
+        ['Diámetro del impulsor', `${nf(ag.D, 2)} m`],
+        ['Potencia al eje', `${nf(ag.P / 1000, 1)} kW`],
+        ['Potencia específica', `${nf(ag.PV, 0)} W/m³`],
+        ['N_js de Zwietering', `${nf(ag.rpmJs, 0)} rpm`],
+        ['Velocidad periférica', `${nf(ag.tip, 2)} m/s`],
+        ['kLa estimado', `${nf(ag.kLa, 1)} h⁻¹`],
+        ['Energía del circuito', `${nf(r.kWhT, 2)} kWh/t`],
+      ].map(x => `<div>${x[0]}<b>${x[1]}</b></div>`).join('');
+
+      $('tblTitle').textContent = 'Balance por tanque';
+      $('tbl').innerHTML = `<thead><tr><th>Tanque</th><th>t acum. (h)</th><th>Extracción Au (%)</th><th>Au sólido (g/t)</th><th>Au solución (mg/L)</th><th>NaCN (mg/L)</th><th>Adición (kg/t)</th><th>OD (mg/L)</th><th>k (h⁻¹)</th><th>Cu sol. (mg/L)</th></tr></thead><tbody>` +
+        r.tanks.map(t => `<tr><td>T${t.i}</td><td class="m">${nf(t.tauCum, 2)}</td><td class="m">${nf(t.ext * 100, 2)}</td><td class="m">${nf(t.AuRes, 3)}</td><td class="m">${nf(t.AuSol, 3)}</td><td class="m">${nf(t.CN, 0)}</td><td class="m">${nf(t.add, 3)}</td><td class="m">${nf(t.DO, 2)}</td><td class="m">${nf(t.k, 3)}</td><td class="m">${nf(t.CuSol, 0)}</td></tr>`).join('') + '</tbody>';
+      diagnose(r, true);
+    } else {
+      const b = SIM.batch(P, P.tBatch, P.replenish);
+      const last = b.pts.at(-1), eff = recEff(last.Cu), recov = b.ext * eff;
+      const t80 = (() => { const target = 0.8 * b.ext; const p = b.pts.find(q => q.ext >= target); return p ? p.t : null; })();
+      $('kpis').innerHTML = [
+        ['hero', `Extracción a ${nf(P.tBatch, 1)} h`, nf(b.ext * 100, 1), '%', `80 % de ella a las ${nf(t80, 1)} h`],
+        ['', 'Recuperación global', nf(recov * 100, 1), '%', `${({ cil: 'CIL', cip: 'CIP', mc: 'Merrill-Crowe' })[P.rec]} ${nf(eff * 100, 1)} %`],
+        ['', 'Consumo de NaCN', nf(b.consumed, 2), 'kg/t', `agregado ${nf(b.added, 2)} kg/t`],
+        ['', 'Consumo de cal', nf(b.CaO, 2), 'kg/t CaO', `pH ${nf(P.pH, 2)}`],
+        ['', 'Relave', nf(P.Au * (1 - b.ext), 2), 'g/t Au', `cabeza ${nf(P.Au, 2)} g/t`],
+      ].map(k => `<div class="kpi ${k[0]}"><div class="k">${k[1]}</div><div class="n">${k[2]}<small>${k[3]}</small></div><div class="s">${k[4]}</div></div>`).join('');
+      $('flowTitle').textContent = 'Prueba de cianuración en botella';
+      $('flowSub').textContent = P.replenish ? 'Cianuro repuesto a la concentración inicial' : 'Sin reposición: el cianuro se agota con el tiempo';
+      $('flow').innerHTML = flowBatch(b);
+      const pts = b.pts;
+      const extra = [];
+      if (presetKey === 'lovera') extra.push({ label: 'Lovera et al. (medido)', data: [{ x: 12, y: 33.57 }, { x: 24, y: 41.81 }], type: 'scatter', backgroundColor: s3, borderColor: css('--panel'), borderWidth: 2, pointRadius: 7, pointStyle: 'rectRot' });
+      if (presetKey === 'ruiz') extra.push({ label: 'Ruiz-Córdoba et al. (−200 mallas)', data: [{ x: 3, y: 73.28 }, { x: 7.5, y: 83.68 }, { x: 7.5, y: 80.48 }, { x: 12, y: 86.4 }], type: 'scatter', backgroundColor: s3, borderColor: css('--panel'), borderWidth: 2, pointRadius: 7, pointStyle: 'rectRot' });
+      const po = baseOpts('Extracción de oro (%)', 'Tiempo (h)', 0, 100);
+      po.scales.x.type = 'linear'; po.scales.x.min = 0; po.scales.x.max = P.tBatch;
+      po.plugins.tooltip.callbacks = { title: c => `t = ${nf(c[0].parsed.x, 2)} h`, label: c => `${c.dataset.label}: ${nf(c.parsed.y, 1)} %` };
+      upsert('cProf', { type: 'line', data: { datasets: [lineDs('Oro (modelo)', pts.map(p => ({ x: p.t, y: +(p.ext * 100).toFixed(2) })), gold, { pointRadius: 0, tension: 0 }), ...extra] }, options: po });
+      $('lgProf').innerHTML = [[gold, 'Oro (modelo)'], ...extra.map(e => [e.backgroundColor, e.label])].map(d => `<span><i style="background:${d[0]}"></i>${d[1]}</span>`).join('');
+      $('profTitle').textContent = 'Cinética de extracción';
+      $('profSub').textContent = `${nf(P.Cw * 100, 0)} % sólidos · D80 ${nf(P.D80, 0)} µm`;
+      const xo = (t) => { const o = baseOpts(t, 'Tiempo (h)', 0); o.scales.x.type = 'linear'; o.scales.x.min = 0; o.scales.x.max = P.tBatch; return o; };
+      const co = xo('NaCN libre (mg/L)'); co.plugins.tooltip.callbacks = { title: c => `t = ${nf(c[0].parsed.x, 2)} h`, label: c => `NaCN: ${nf(c.parsed.y, 0)} mg/L` };
+      upsert('cCN', { type: 'line', data: { datasets: [lineDs('NaCN', pts.map(p => ({ x: p.t, y: +p.CN.toFixed(1) })), css('--accent'), { pointRadius: 0, tension: 0, stepped: P.replenish })] }, options: co });
+      const doo = xo('Cu en solución (mg/L)'); doo.plugins.tooltip.callbacks = { title: c => `t = ${nf(c[0].parsed.x, 2)} h`, label: c => `Cu: ${nf(c.parsed.y, 0)} mg/L` };
+      upsert('cDO', { type: 'line', data: { datasets: [lineDs('Cu', pts.map(p => ({ x: p.t, y: +p.Cu.toFixed(1) })), s2, { pointRadius: 0, tension: 0 })] }, options: doo });
+      $('chemSub').textContent = 'Cianuro libre y cobre disuelto durante la prueba';
+      const resid = b.resid;
+      const parts = [['Consumido (sulfuros, Cu, HCN)', b.consumed, gold], ['Residual en la solución', resid, css('--ink-3')]];
+      cnBlock(parts, b.consumed + resid, `Agregado ${nf(b.added, 2)} kg/t`);
+      $('agBlock').hidden = true;
+      $('tblTitle').textContent = 'Evolución de la prueba';
+      const rows = pts.filter((p, i) => { const step = P.tBatch <= 12 ? 1 : P.tBatch <= 36 ? 2 : 6; return Math.abs(p.t / step - Math.round(p.t / step)) < 1e-6 || i === pts.length - 1; });
+      $('tbl').innerHTML = `<thead><tr><th>Tiempo (h)</th><th>Extracción Au (%)</th><th>Au relave (g/t)</th><th>Au solución (mg/L)</th><th>NaCN (mg/L)</th><th>Cu sol. (mg/L)</th></tr></thead><tbody>` +
+        rows.map(p => `<tr><td class="m">${nf(p.t, 1)}</td><td class="m">${nf(p.ext * 100, 2)}</td><td class="m">${nf(P.Au * (1 - p.ext), 3)}</td><td class="m">${nf(P.Au * p.ext * b.h.cs, 3)}</td><td class="m">${nf(p.CN, 0)}</td><td class="m">${nf(p.Cu, 0)}</td></tr>`).join('') + '</tbody>';
+      diagnose(b, false);
+    }
+
+    // barrido
+    const sv = SW.find(s => s[0] === swSel.value) || SW[0];
+    const xs = [], ys = [], N = 28;
+    for (let i = 0; i <= N; i++) {
+      let v = sv[3] + (sv[4] - sv[3]) * i / N;
+      if (sv[0] === 'n') v = Math.round(v);
+      const pp = Object.assign({}, P, { [sv[0]]: v });
+      xs.push(sv[0] === 'Cw' ? v * 100 : v); ys.push(+(evalExt(pp) * 100).toFixed(2));
+    }
+    const curX = sv[0] === 'Cw' ? P.Cw * 100 : P[sv[0]];
+    const so = baseOpts('Extracción de oro (%)', `${sv[1]}${sv[2] ? ' (' + sv[2] + ')' : ''}`, Math.max(0, Math.floor(Math.min(...ys) / 10) * 10), 100);
+    so.scales.x.type = 'linear'; so.scales.x.min = xs[0]; so.scales.x.max = xs.at(-1);
+    so.plugins.tooltip.callbacks = { title: c => `${sv[1]}: ${nf(c[0].parsed.x, sv[0] === 'pH' ? 2 : sv[0] === 'Cu' ? 2 : 0)} ${sv[2]}`, label: c => `${c.dataset.label}: ${nf(c.parsed.y, 1)} %` };
+    upsert('cSweep', { type: 'line', data: { datasets: [
+      lineDs('Extracción', xs.map((x, i) => ({ x, y: ys[i] })), gold, { pointRadius: 0, tension: 0.2 }),
+      { label: 'Valor actual', data: [{ x: curX, y: +(evalExt(P) * 100).toFixed(2) }], type: 'scatter', backgroundColor: css('--ink'), borderColor: css('--panel'), borderWidth: 2, pointRadius: 7 },
+    ] }, options: so });
+    const best = xs[ys.indexOf(Math.max(...ys))];
+    $('swNote').textContent = `Los demás parámetros quedan fijos. Máximo en ${nf(best, sv[0] === 'pH' || sv[0] === 'Cu' ? 2 : 0)} ${sv[2]} (${nf(Math.max(...ys), 1)} %). El punto oscuro es el valor actual.`;
+  }
+
+  function cnBlock(parts, tot, label) {
+    $('cnTot').textContent = label;
+    $('cnStack').innerHTML = parts.filter(p => p[1] > 0).map(p => `<div style="flex:${p[1]};background:${p[2]}" title="${p[0]}"></div>`).join('');
+    $('cnLeg').innerHTML = parts.map(p => `<span><i class="sq" style="background:${p[2]}"></i>${p[0]} · <b class="mono">${nf(p[1], 2)} kg/t</b> (${nf(tot > 0 ? p[1] / tot * 100 : 0, 0)} %)</span>`).join('');
+  }
+
+  buildControls(); syncControls(); render(); validation();
+  // Redibujar al cambiar el tema
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  const rethemer = () => { render(); validation(); };
+  mq.addEventListener ? mq.addEventListener('change', rethemer) : null;
+  new MutationObserver(rethemer).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+})();
+</script>
+
+</body></html>
